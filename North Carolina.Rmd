@@ -1,0 +1,132 @@
+---
+title: "NC-09-Polling-Data"
+author: "Jennifer Li"
+date: "2/26/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# makes it easy to install and load core tidyverse packages
+library(tidyverse)
+# cleans up data names
+library(janitor)
+# creates graphs from data
+library(ggplot2)
+# makes tables look nice
+library(gt)
+```
+
+```{r charts, echo = FALSE, message = FALSE}
+# reads in ps_4_elections-poll-nc09-3 csv file and stores a copy of it as elections for future use, so we do not mess up the original dataset
+elections <- read_csv("ps_4_elections-poll-nc09-3.csv")
+
+# here, I am reading in the elections dataset and storing it as a new object, table
+table <- elections %>%
+  # the table looks at the response, race_eth, and final_weight variables, so that's what I'm selecting.
+  select(response, race_eth, final_weight) %>% 
+  # the table does not include people who listed their race_eth as Don't know/Refused, so I filtered those out
+  filter(race_eth != "[DO NOT READ] Don't know/Refused") %>%
+  # this reorders the race_eth levels by hand, so that it looks exactly like the table
+  mutate(race_eth = fct_relevel(race_eth, c("White", "Black", "Hispanic", "Asian", "Other"))) %>% 
+  # groups the dataframe by race_eth and response
+  group_by(race_eth, response) %>%
+  # this produces all the data we have for the race_eth, response, and total variables
+  summarize(total = sum(final_weight)) %>%   
+  # spread is important because it spreads the data into wide format. fill = 0 is important because it addresses the problem of blank cells (interpreted as NA in the table) and replaces NA with 0
+  spread(key = response, value = total, fill = 0) %>% 
+  # mutating the dataframe to include Dem, Rep, Und, and 3 
+  mutate(all = Dem + Rep + Und + `3`) %>% 
+  # mutating the dataframe so that the variable for Dems is a percentage of Democrats over all the variables (Dem, Rep, Und, and 3)
+  mutate(Dem = Dem / all) %>% 
+  # same as above, but instead, mutating the dataframe so that the variable for Republicans is a percentage of Rep over all the variables (Dem, Rep, Und, and 3)
+  mutate(Rep = Rep / all) %>% 
+  # same as above, but instead, mutating the dataframe so that the variable for Undecided is a percentage of Und over all the variables (Dem, Rep, Und, and 3)
+  mutate(Und = Und / all) %>% 
+  # now that we've mutated the dataframe, I want to select only Dem, Repub, and Und, so I dropped the all and 3 columns
+  select(-all, - `3`) %>%
+  # taking a closer look at the table, it seems that for Undecided Asians, there is an em dash instead of a percentage. So, we need to turn the 0 that we changed above back into an NA
+  na_if(0) %>%
+
+  # as we learned in class, whenever you group a tibble, the grouping stays with a resulting object, until we explicitly ungroup() it. So that's what I'm doing here!
+  ungroup()
+
+# use gt to create a table that looks like the one in the problem set. Need to specify table because that's where my transformed data lies
+gt(table) %>%
+  # this adds a table header for both title and subtitle to my plot. Note: tab_header does not allow caption (unlike labs), so that's why I used subtitle
+  tab_header(
+    title = "Polling Results for North Carolina's 9th Congressional District",
+    subtitle = "Source: North Carolina's 9th Congressional District") %>% 
+  
+  # this modifies my column labels, so that they match the column labels of the graph we're trying to replicate
+  cols_label(
+    race_eth = "Ethnicity",
+    Dem = "DEM.",
+    Rep = "REP.",
+    Und = "UND."
+  ) %>%
+  
+  # this turns the numeric values in the data into a percentage-based format, just like the graph we're trying to replicate. It assumes the input numeric values are in a fractional format/fixed number point format, so that they will automatically be multiplied by 100 before adding the percent sign
+  fmt_percent(columns = vars(Dem, Rep, Und),
+              decimals = 0) %>%
+  # the fmt_missing command reformats the NA, so that the cell will appear as an em dash to better represent the missing data
+  fmt_missing(columns = vars(Und), rows = 4)
+```
+
+
+
+```{r plot, echo = FALSE, fig.width = 7.2}
+# here, I am reading in the elections dataset and storing it as a new object, plot
+plot <- elections %>%
+  # the plot looks at final_weight, educ, and race_eth, so those are the variables I'm selecting. I went back and added race_eth because otherwise, Don't know/Refused showed up on the graph
+  select(final_weight, educ, race_eth) %>%
+  # similar to what I did in q2 above, this reorders the educ levels by hand, so that it looks exactly like the plot we are trying to replicate
+  mutate(educ = fct_relevel(educ, "Grade school", "High school", "Some college or trade school", "Bachelors' degree", "Graduate or Professional Degree")) %>%
+  # the plot does not include race_eth when the respondents answered Don't Know/Refused, so this filters them out 
+  filter(race_eth != "[DO NOT READ] Don't know/Refused")
+
+# using ggplot to create my plot and changed the aesthetics, so that educ was my x-axis and final_weight was my y-axis
+ggplot(plot, aes(x = educ, y = final_weight)) +
+  # creates a violin plot, like the plot in the problem set 
+  geom_violin() + 
+  # this adds a small amount of random variation to the location of each point and is a useful way of handling overplotting caused by discreetness in smaller datasets. I played around with size, width, and alpha so that it would look similar to the graph we are trying to replicate. However, it's important to note that every time we knit this file, the random variation of each point will change, so that's why our plot will be ~approximate~ to the one we are trying to recreate
+  geom_jitter(size = 1.0, width = 0.2, alpha = 0.5) +
+  # need to flip the cartesian coordinates so that horizontal becomes vertical, and vertical, horizontal, so that the violins are horizontal 
+  coord_flip() +
+  # creating labels for my plot (title, subtitle, and caption) to match the plot in the problem set
+  labs(title = "More Educated Matters Less in North Carolina 9th",
+    subtitle = "Poll gives more weight to people who are less likely to participate in polls",
+    caption = "New York Times Upshot/Siena College 2018 live polls") +
+  # adds a label for the y-axis to match the plot in the problem set
+  ylab("Weight Given to Respondent in Calculating Poll Results") +
+  # since there is no visible label on the x-axis, this leaves the x-axis label blank
+  xlab(" ")
+```
+
+
+```{r graph, echo = FALSE, fig.width = 7.7}
+# here, I am reading in the elections dataset and storing it as a new object, graph
+graph <- elections %>%
+  # the two variables I am looking at are partyid and gender, because I would like to know the number of males and females that identify for each party (Dem, Repub, and Independent)
+  group_by(partyid, gender) %>%
+  # I filtered out those who refused or identified as a member of another political party to keep my graph clean and because Healy probably only wants to know the gender for Democrats, Republicans, and Independents, since those are the top three parties in the U.S. 
+  filter(!(partyid %in% c("[DO NOT READ] Refused", "or as a member of another political party"))) %>%
+  # summarizes the transformed data and counts the number of males in each party (Democrat, Independent, and Republican), as well as the number of females in each party
+  summarize(total = n())
+
+# using ggplot to create my graph and changed the aesthetics, so that gender was my x-axis, total was my y-axis, the color for each party was different, and the interior coloring of the bars in the graph were filled by partyid 
+ggplot(graph, aes(x = gender, y = total, color = partyid, fill = partyid)) +
+  # creating bar graph, setting stat = "identity" ensures that the height of the bar represents the value in the total column of my dataframe and position_dodge adjusts the positioning of the bars so that any overlaps appear to the side
+  geom_bar(stat = "identity", position = position_dodge()) +
+  # creates a title and caption for my graph, so the viewer knows what they're looking at and where the data came from
+  labs(title = "Party ID by Gender in North Carolina's 9th Congressional District",
+       caption = "Source: North Carolina's 9th Congressional District") + 
+  # adds the label "Count" to my y-axis
+  ylab("Count") + 
+  # adds the label "Party ID" to my x-axis
+  xlab("Party ID") +
+  # this manually changes the colors of each bar in the graph, so that blue correctly represents the Democratic Party, green represents Independents, and red rerepresents Republicans
+  scale_fill_manual(values = c("blue", "green", "red")) +
+  # but we're not done yet! scale_fill_manual changes the interior coloring, but the outline of the bars is still different, so adding scale_color_manual to manually change the colors of the outline resolves this. We're done!
+  scale_color_manual(values = c("blue", "green", "red"))
+```
